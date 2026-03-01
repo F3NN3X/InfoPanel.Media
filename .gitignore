@@ -1,0 +1,27 @@
+# Ignore all hidden folders
+./**/.*
+
+# Ignore bin and obj folders, recursively
+**/bin/
+**/obj/
+
+# Ignore .vs folder (Visual Studio)
+.vs/
+
+# Ignore .idea folder (IntelliJ IDEA)
+.idea/
+
+# Ignore VSCode settings directory
+.vscode/
+
+CLAUDE.md
+
+*.log
+.claude/settings.local.json
+
+# IDE and OS artifacts
+*.suo
+*.user
+.DS_Store
+Thumbs.db
+.env
