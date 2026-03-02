@@ -40,7 +40,7 @@ public sealed class MediaPlugin : BasePlugin
     public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
     public MediaPlugin()
-        : base("media-plugin", "Media", "Displays current media playback information from any source. Version: 1.2.0")
+        : base("media-plugin", "Media", "Displays current media playback information from any source. Version: 1.2.1")
     {
     }
 
@@ -245,7 +245,9 @@ public sealed class MediaPlugin : BasePlugin
             _elapsedTime.Value = TimeSpan.FromMilliseconds(info.ProgressMs).ToString(@"mm\:ss");
             _remainingTime.Value = TimeSpan.FromMilliseconds(info.DurationMs - info.ProgressMs).ToString(@"mm\:ss");
             _trackProgress.Value = info.DurationMs > 0 ? (float)(info.ProgressMs / (double)info.DurationMs * 100) : 0.0F;
-            _coverArt.Value = _coverArtServer?.CoverArtUrl ?? info.CoverArtPath ?? string.Empty;
+            _coverArt.Value = _coverArtServer?.CoverArtUrl is { } url
+                ? $"{url}?v={_playbackService?.CoverArtVersion}"
+                : info.CoverArtPath ?? string.Empty;
             _sourceApp.Value = info.SourceApp ?? "-";
             _playbackState.Value = 1.0F;
         }
@@ -257,7 +259,9 @@ public sealed class MediaPlugin : BasePlugin
             _elapsedTime.Value = TimeSpan.FromMilliseconds(info.ProgressMs).ToString(@"mm\:ss");
             _remainingTime.Value = TimeSpan.FromMilliseconds(info.DurationMs - info.ProgressMs).ToString(@"mm\:ss");
             _trackProgress.Value = info.DurationMs > 0 ? (float)(info.ProgressMs / (double)info.DurationMs * 100) : 0.0F;
-            _coverArt.Value = _coverArtServer?.CoverArtUrl ?? info.CoverArtPath ?? string.Empty;
+            _coverArt.Value = _coverArtServer?.CoverArtUrl is { } url
+                ? $"{url}?v={_playbackService?.CoverArtVersion}"
+                : info.CoverArtPath ?? string.Empty;
             _sourceApp.Value = info.SourceApp ?? "-";
             _playbackState.Value = info.IsPlaying ? 2.0F : 1.0F;
         }

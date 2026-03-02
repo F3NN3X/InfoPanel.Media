@@ -23,6 +23,7 @@ public sealed class MediaPlaybackService : IDisposable
     private bool _isPlaying;
     private DateTime _lastPositionUpdateTime = DateTime.UtcNow;
     private byte[]? _lastThumbnailHash;
+    private long _coverArtVersion;
     private bool _disposed;
 
     public static readonly string CoverArtFilePath =
@@ -59,6 +60,8 @@ public sealed class MediaPlaybackService : IDisposable
     {
         _prioritySources = prioritySources;
     }
+
+    public long CoverArtVersion => _coverArtVersion;
 
     // Events for playback updates
     public event EventHandler<PlaybackInfo>? PlaybackUpdated;
@@ -375,6 +378,7 @@ public sealed class MediaPlaybackService : IDisposable
             }
 
             _lastThumbnailHash = hash;
+            _coverArtVersion++;
             await File.WriteAllBytesAsync(CoverArtFilePath, bytes);
             _lastCoverArtPath = CoverArtFilePath;
 
