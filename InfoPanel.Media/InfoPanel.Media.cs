@@ -16,7 +16,7 @@ public sealed class MediaPlugin : BasePlugin
     private readonly PluginText _album = new("album", "Album", "-");
     private readonly PluginText _elapsedTime = new("elapsed-time", "Elapsed Time", "00:00");
     private readonly PluginText _remainingTime = new("remaining-time", "Remaining Time", "00:00");
-    private readonly PluginText _coverArt = new("cover-art", "Cover Art Path", "");
+    private readonly PluginText _coverArt = new("cover-art", "Cover Art", "");
     private readonly PluginText _sourceApp = new("source-app", "Source App", "-");
 
     // UI display elements (PluginSensor) for InfoPanel
@@ -24,8 +24,9 @@ public sealed class MediaPlugin : BasePlugin
     private readonly PluginSensor _sessionState = new("session-state", "Session State", (float)SessionState.NoSession);
     private readonly PluginSensor _playbackState = new("playback-state", "Playback State", 0.0F);
 
-    // Service
+    // Services
     private MediaPlaybackService? _playbackService;
+    private CoverArtServer? _coverArtServer;
 
     // Configuration
     private string? _configFilePath;
@@ -33,11 +34,13 @@ public sealed class MediaPlugin : BasePlugin
     private string _noTrackMessage = "No music playing";
     private string _pausedMessage = "";
     private string _noTrackArtistMessage = "-";
+    private string[] _prioritySources = [];
+    private int _coverArtPort = 52312;
 
     public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
     public MediaPlugin()
-        : base("media-plugin", "Media", "Displays current media playback information from any source. Version: 1.0.0")
+        : base("media-plugin", "Media", "Displays current media playback information from any source. Version: 1.2.0")
     {
     }
 
@@ -54,7 +57,10 @@ public sealed class MediaPlugin : BasePlugin
 
         LoadConfigFile();
 
-        // Clean up previous service for reentrancy
+        // Clean up previous services for reentrancy
+        _coverArtServer?.Dispose();
+        _coverArtServer = null;
+
         if (_playbackService != null)
         {
             _playbackService.PlaybackUpdated -= OnPlaybackUpdated;
@@ -63,10 +69,13 @@ public sealed class MediaPlugin : BasePlugin
             _playbackService.Dispose();
         }
 
-        _playbackService = new MediaPlaybackService();
+        _playbackService = new MediaPlaybackService(_prioritySources);
         _playbackService.PlaybackUpdated += OnPlaybackUpdated;
         _playbackService.PlaybackError += OnPlaybackError;
         _playbackService.SessionStateChanged += OnSessionStateChanged;
+
+        _coverArtServer = new CoverArtServer(MediaPlaybackService.CoverArtFilePath, _coverArtPort);
+        _coverArtServer.Start();
 
         // Bridge async initialization from sync context
         Task.Run(async () =>
@@ -89,7 +98,10 @@ public sealed class MediaPlugin : BasePlugin
             config["Media Plugin"]["NoTrackMessage"] = "No music playing";
             config["Media Plugin"]["PausedMessage"] = "";
             config["Media Plugin"]["NoTrackArtistMessage"] = "-";
+            config["Media Plugin"]["PrioritySources"] = "Spotify,Apple Music,VLC,foobar2000,AIMP,Groove Music,Windows Media Player,MPC-HC";
+            config["Media Plugin"]["CoverArtPort"] = "52312";
             parser.WriteFile(_configFilePath, config);
+            _prioritySources = ["Spotify", "Apple Music", "VLC", "foobar2000", "AIMP", "Groove Music", "Windows Media Player", "MPC-HC"];
             Debug.WriteLine("[Media] Config file created with defaults.");
         }
         else
@@ -138,6 +150,31 @@ public sealed class MediaPlugin : BasePlugin
                     configUpdated = true;
                 }
 
+                if (!config["Media Plugin"].ContainsKey("PrioritySources"))
+                {
+                    config["Media Plugin"]["PrioritySources"] = "Spotify,Apple Music,VLC,foobar2000,AIMP,Groove Music,Windows Media Player,MPC-HC";
+                    configUpdated = true;
+                }
+
+                var priorityRaw = config["Media Plugin"]["PrioritySources"] ?? "";
+                _prioritySources = string.IsNullOrWhiteSpace(priorityRaw)
+                    ? []
+                    : priorityRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                if (!config["Media Plugin"].ContainsKey("CoverArtPort") ||
+                    !int.TryParse(config["Media Plugin"]["CoverArtPort"], out int coverArtPort) ||
+                    coverArtPort < 0)
+                {
+                    config["Media Plugin"]["CoverArtPort"] = "52312";
+                    _coverArtPort = 52312;
+                    configUpdated = true;
+                    Debug.WriteLine("[Media] CoverArtPort added or corrected to 52312 in config.");
+                }
+                else
+                {
+                    _coverArtPort = coverArtPort;
+                }
+
                 if (configUpdated)
                 {
                     parser.WriteFile(_configFilePath, config);
@@ -146,7 +183,9 @@ public sealed class MediaPlugin : BasePlugin
 
                 Debug.WriteLine($"[Media] Loaded config - MaxDisplayLength: {_maxDisplayLength}, " +
                     $"NoTrackMessage: '{_noTrackMessage}', PausedMessage: '{_pausedMessage}', " +
-                    $"NoTrackArtistMessage: '{_noTrackArtistMessage}'");
+                    $"NoTrackArtistMessage: '{_noTrackArtistMessage}', " +
+                    $"PrioritySources: [{string.Join(", ", _prioritySources)}], " +
+                    $"CoverArtPort: {_coverArtPort}");
             }
             catch (Exception ex)
             {
@@ -206,7 +245,7 @@ public sealed class MediaPlugin : BasePlugin
             _elapsedTime.Value = TimeSpan.FromMilliseconds(info.ProgressMs).ToString(@"mm\:ss");
             _remainingTime.Value = TimeSpan.FromMilliseconds(info.DurationMs - info.ProgressMs).ToString(@"mm\:ss");
             _trackProgress.Value = info.DurationMs > 0 ? (float)(info.ProgressMs / (double)info.DurationMs * 100) : 0.0F;
-            _coverArt.Value = info.CoverArtPath ?? string.Empty;
+            _coverArt.Value = _coverArtServer?.CoverArtUrl ?? info.CoverArtPath ?? string.Empty;
             _sourceApp.Value = info.SourceApp ?? "-";
             _playbackState.Value = 1.0F;
         }
@@ -218,7 +257,7 @@ public sealed class MediaPlugin : BasePlugin
             _elapsedTime.Value = TimeSpan.FromMilliseconds(info.ProgressMs).ToString(@"mm\:ss");
             _remainingTime.Value = TimeSpan.FromMilliseconds(info.DurationMs - info.ProgressMs).ToString(@"mm\:ss");
             _trackProgress.Value = info.DurationMs > 0 ? (float)(info.ProgressMs / (double)info.DurationMs * 100) : 0.0F;
-            _coverArt.Value = info.CoverArtPath ?? string.Empty;
+            _coverArt.Value = _coverArtServer?.CoverArtUrl ?? info.CoverArtPath ?? string.Empty;
             _sourceApp.Value = info.SourceApp ?? "-";
             _playbackState.Value = info.IsPlaying ? 2.0F : 1.0F;
         }
@@ -258,6 +297,9 @@ public sealed class MediaPlugin : BasePlugin
     public override void Close()
     {
         Debug.WriteLine($"[Media] Close called at UTC: {DateTime.UtcNow:o}");
+
+        _coverArtServer?.Dispose();
+        _coverArtServer = null;
 
         if (_playbackService != null)
         {

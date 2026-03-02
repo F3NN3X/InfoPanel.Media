@@ -8,6 +8,7 @@ namespace InfoPanel.Media.Services;
 
 public sealed class MediaPlaybackService : IDisposable
 {
+    private readonly string[] _prioritySources;
     private GlobalSystemMediaTransportControlsSessionManager? _sessionManager;
     private GlobalSystemMediaTransportControlsSession? _currentSession;
 
@@ -24,7 +25,7 @@ public sealed class MediaPlaybackService : IDisposable
     private byte[]? _lastThumbnailHash;
     private bool _disposed;
 
-    private static readonly string CoverArtFilePath =
+    public static readonly string CoverArtFilePath =
         Path.Combine(Path.GetTempPath(), "infopanel-media-cover.png");
 
     private static readonly Dictionary<string, string> FriendlyAppNames = new(StringComparer.OrdinalIgnoreCase)
@@ -54,6 +55,11 @@ public sealed class MediaPlaybackService : IDisposable
         ["mpc-hc.exe"] = "MPC-HC",
     };
 
+    public MediaPlaybackService(string[] prioritySources)
+    {
+        _prioritySources = prioritySources;
+    }
+
     // Events for playback updates
     public event EventHandler<PlaybackInfo>? PlaybackUpdated;
     public event EventHandler<string>? PlaybackError;
@@ -66,8 +72,9 @@ public sealed class MediaPlaybackService : IDisposable
             Debug.WriteLine($"[Media] Initializing GSMTC session manager at UTC: {DateTime.UtcNow:o}");
             _sessionManager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
             _sessionManager.CurrentSessionChanged += OnCurrentSessionChanged;
+            _sessionManager.SessionsChanged += OnSessionsChanged;
 
-            var session = _sessionManager.GetCurrentSession();
+            var session = SelectBestSession();
             AttachSession(session);
 
             if (session != null)
@@ -178,17 +185,81 @@ public sealed class MediaPlaybackService : IDisposable
         CurrentSessionChangedEventArgs args)
     {
         Debug.WriteLine($"[Media] Current session changed at UTC: {DateTime.UtcNow:o}");
-        var session = sender.GetCurrentSession();
-        AttachSession(session);
+        ReEvaluateSession();
+    }
 
-        if (session != null)
+    private void OnSessionsChanged(GlobalSystemMediaTransportControlsSessionManager sender,
+        SessionsChangedEventArgs args)
+    {
+        Debug.WriteLine($"[Media] Sessions changed at UTC: {DateTime.UtcNow:o}");
+        ReEvaluateSession();
+    }
+
+    private GlobalSystemMediaTransportControlsSession? SelectBestSession()
+    {
+        if (_sessionManager == null) return null;
+
+        if (_prioritySources.Length == 0)
+            return _sessionManager.GetCurrentSession();
+
+        var sessions = _sessionManager.GetSessions();
+        if (sessions.Count == 0) return null;
+
+        GlobalSystemMediaTransportControlsSession? bestSession = null;
+        var bestRank = int.MaxValue;
+        var bestIsPlaying = false;
+
+        foreach (var session in sessions)
         {
+            var friendlyName = ResolveSourceApp(session.SourceAppUserModelId);
+            var rank = Array.FindIndex(_prioritySources,
+                p => string.Equals(p, friendlyName, StringComparison.OrdinalIgnoreCase));
+            if (rank < 0) rank = int.MaxValue;
+
+            var isPlaying = false;
+            try
+            {
+                var pbInfo = session.GetPlaybackInfo();
+                isPlaying = pbInfo?.PlaybackStatus ==
+                    GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            }
+            catch
+            {
+                // Session may be stale; treat as not playing
+            }
+
+            if (bestSession == null
+                || rank < bestRank
+                || (rank == bestRank && isPlaying && !bestIsPlaying))
+            {
+                bestSession = session;
+                bestRank = rank;
+                bestIsPlaying = isPlaying;
+            }
+        }
+
+        return bestSession;
+    }
+
+    private void ReEvaluateSession()
+    {
+        var best = SelectBestSession();
+        var bestId = best?.SourceAppUserModelId;
+        var currentId = _currentSession?.SourceAppUserModelId;
+
+        if (string.Equals(bestId, currentId, StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.WriteLine($"[Media] Re-evaluated sessions — no change (current: {currentId})");
+            return;
+        }
+
+        Debug.WriteLine($"[Media] Switching session from '{currentId}' to '{bestId}'");
+        AttachSession(best);
+
+        if (best != null)
             SessionStateChanged?.Invoke(this, SessionState.SessionActive);
-        }
         else
-        {
             SessionStateChanged?.Invoke(this, SessionState.NoSession);
-        }
     }
 
     private void OnMediaPropertiesChanged(GlobalSystemMediaTransportControlsSession sender, MediaPropertiesChangedEventArgs args)
@@ -359,6 +430,7 @@ public sealed class MediaPlaybackService : IDisposable
         if (_sessionManager != null)
         {
             _sessionManager.CurrentSessionChanged -= OnCurrentSessionChanged;
+            _sessionManager.SessionsChanged -= OnSessionsChanged;
             _sessionManager = null;
         }
 

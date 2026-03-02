@@ -11,7 +11,7 @@ Built on the Windows [Global System Media Transport Controls](https://learn.micr
 - **Universal media tracking** — works with any app that integrates with Windows media transport controls
 - **Zero configuration** — no API keys or authentication needed, just install and go
 - **Real-time updates** — 1Hz refresh with progress interpolation between OS events
-- **Album art extraction** — saves cover art to a local temp file for display in InfoPanel
+- **Album art over HTTP** — serves cover art via a built-in HTTP server for use with InfoPanel's HTTP image element
 - **Source detection** — identifies which app is playing (Spotify, Chrome, VLC, etc.)
 - **Customizable messages** — configure display text for idle/paused states via INI
 
@@ -41,7 +41,7 @@ Any application that integrates with Windows media transport controls, including
 | `album` | Album name | `A Night at the Opera` |
 | `elapsed-time` | Elapsed playback time | `02:15` |
 | `remaining-time` | Remaining playback time | `03:40` |
-| `cover-art` | Path to album art temp file | `C:\Users\...\Temp\infopanel-media-cover.png` |
+| `cover-art` | Album art HTTP URL | `http://localhost:52312/cover` |
 | `source-app` | Active media source | `Spotify` |
 
 ### Sensor Entries
@@ -68,6 +68,8 @@ MaxDisplayLength=20
 NoTrackMessage=No music playing
 PausedMessage=
 NoTrackArtistMessage=-
+PrioritySources=Spotify,Apple Music,VLC,foobar2000,AIMP,Groove Music,Windows Media Player,MPC-HC
+CoverArtPort=52312
 ```
 
 | Setting | Default | Description |
@@ -76,6 +78,36 @@ NoTrackArtistMessage=-
 | `NoTrackMessage` | `No music playing` | Message displayed when no media is active |
 | `PausedMessage` | *(empty)* | Message when paused. Empty = keep track info visible |
 | `NoTrackArtistMessage` | `-` | Artist field text when no track or using custom paused message |
+| `PrioritySources` | `Spotify,Apple Music,...` | Comma-separated list of apps to prioritize (see below) |
+| `CoverArtPort` | `52312` | HTTP port for serving cover art. Set to `0` to disable (falls back to file path) |
+
+### Session Prioritization
+
+When multiple apps have active media sessions (e.g. Spotify and a YouTube tab), the plugin picks which one to display based on the `PrioritySources` list. Apps earlier in the list take priority — a paused Spotify will still be shown over a playing browser tab.
+
+The default list prioritizes dedicated music players over browsers:
+
+```
+Spotify,Apple Music,VLC,foobar2000,AIMP,Groove Music,Windows Media Player,MPC-HC
+```
+
+To customize, edit the comma-separated list in `InfoPanel.Media.dll.ini`. Use the **friendly app names** shown in the table below:
+
+| Friendly Name | Raw App ID(s) |
+|---------------|---------------|
+| Spotify | `Spotify.exe` |
+| Chrome | `chrome.exe` |
+| Edge | `msedge.exe` |
+| Firefox | `firefox.exe` |
+| VLC | `vlc.exe` |
+| Windows Media Player | `wmplayer.exe` |
+| Groove Music | `Music.UI` |
+| foobar2000 | `foobar2000.exe` |
+| AIMP | `AIMP.exe` |
+| MPC-HC | `mpc-hc.exe`, `mpc-hc64.exe` |
+| Apple Music | *(UWP)* |
+
+Apps not in the list are treated as lowest priority. If `PrioritySources` is empty, the plugin falls back to the OS default (most recently active session).
 
 ## Building from Source
 
@@ -95,15 +127,18 @@ The plugin follows an event-driven architecture with a single service:
 
 ```
 MediaPlugin (BasePlugin)
-    └── MediaPlaybackService
-            ├── GSMTC SessionManager (OS-level media tracking)
-            ├── Session events (MediaProperties, PlaybackInfo, Timeline)
-            ├── Progress estimation (1Hz interpolation)
-            └── Thumbnail extraction (SHA256 change detection)
+    ├── MediaPlaybackService
+    │       ├── GSMTC SessionManager (OS-level media tracking)
+    │       ├── Session events (MediaProperties, PlaybackInfo, Timeline)
+    │       ├── Progress estimation (1Hz interpolation)
+    │       └── Thumbnail extraction (SHA256 change detection)
+    └── CoverArtServer
+            └── HttpListener (serves album art over HTTP)
 ```
 
 - **`MediaPlugin`** — main plugin class, manages lifecycle and UI elements
 - **`MediaPlaybackService`** — interfaces with the Windows GSMTC API, handles session tracking, media property changes, timeline sync, and album art extraction
+- **`CoverArtServer`** — lightweight HTTP server that serves album art at `http://localhost:{port}/cover` for InfoPanel's HTTP image element
 
 ## Requirements
 
