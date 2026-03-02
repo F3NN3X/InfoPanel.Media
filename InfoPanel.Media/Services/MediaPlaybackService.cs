@@ -23,6 +23,7 @@ public sealed class MediaPlaybackService : IDisposable
     private bool _isPlaying;
     private DateTime _lastPositionUpdateTime = DateTime.UtcNow;
     private byte[]? _lastThumbnailHash;
+    private byte[]? _lastThumbnailBytes;
     private long _coverArtVersion;
     private bool _disposed;
 
@@ -62,6 +63,9 @@ public sealed class MediaPlaybackService : IDisposable
     }
 
     public long CoverArtVersion => _coverArtVersion;
+
+    /// <summary>The last extracted thumbnail image bytes. Used for in-memory HTTP serving.</summary>
+    public byte[]? LastThumbnailBytes => _lastThumbnailBytes;
 
     // Events for playback updates
     public event EventHandler<PlaybackInfo>? PlaybackUpdated;
@@ -378,6 +382,7 @@ public sealed class MediaPlaybackService : IDisposable
             }
 
             _lastThumbnailHash = hash;
+            _lastThumbnailBytes = bytes;
             _coverArtVersion++;
             await File.WriteAllBytesAsync(CoverArtFilePath, bytes);
             _lastCoverArtPath = CoverArtFilePath;
@@ -422,6 +427,7 @@ public sealed class MediaPlaybackService : IDisposable
         _lastDurationMs = 0;
         _isPlaying = false;
         _lastThumbnailHash = null;
+        _lastThumbnailBytes = null;
     }
 
     public void Dispose()

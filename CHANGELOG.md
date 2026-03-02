@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-03-02
+
+### Added
+
+- Status images: configurable play/pause/idle indicator icons overlaid on cover art, replacing it, or served separately
+- Four display modes via `StatusImageMode` setting: `Off`, `Replace`, `Overlay` (default), `Separate`
+- Default 128x128 white-on-transparent status icons bundled with the plugin (`play.png`, `pause.png`, `idle.png`)
+- `StatusImageStates` setting: choose which playback states show a status icon on cover art (e.g. `Pause,Idle` to hide play icon from overlay/replace while the `/status` endpoint still serves all states)
+- `OverlayScale` setting: control overlay icon size as a percentage (1-100) of cover art's smaller dimension
+- `PlayImage`, `PauseImage`, `IdleImage` settings: use custom icon files (relative or absolute paths)
+- New `status-image` plugin text element: serves the current status icon via HTTP at `/status` endpoint
+- `/status` HTTP endpoint on the cover art server for serving status icons independently of cover art
+
+### Changed
+
+- `System.Drawing.Common` NuGet dependency added for image compositing
+- Cover art server now handles both `/cover` and `/status` endpoints
+- `status-image` element is always registered in the plugin UI (populated only when mode is not `Off`)
+- Cover art and status images now served from in-memory buffers for faster HTTP responses and reduced flicker on state/track changes
+
 ## [1.2.1] - 2026-03-02
 
 ### Fixed

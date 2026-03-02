@@ -5,7 +5,10 @@ namespace InfoPanel.Media.Services;
 
 public sealed class CoverArtServer : IDisposable
 {
-    private readonly string _coverArtFilePath;
+    private volatile string _coverArtFilePath;
+    private volatile string? _statusImageFilePath;
+    private volatile byte[]? _coverImageData;
+    private volatile byte[]? _statusImageData;
     private readonly int _requestedPort;
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
@@ -19,8 +22,21 @@ public sealed class CoverArtServer : IDisposable
         _requestedPort = port;
     }
 
+    public string CoverArtFilePath { get => _coverArtFilePath; set => _coverArtFilePath = value; }
+    public string? StatusImageFilePath { get => _statusImageFilePath; set => _statusImageFilePath = value; }
+
+    /// <summary>Sets the in-memory cover image data. Set this BEFORE bumping the version URL so the data is ready when InfoPanel fetches.</summary>
+    public void SetCoverImageData(byte[]? data) => _coverImageData = data;
+
+    /// <summary>Sets the in-memory status image data. Set this BEFORE bumping the version URL so the data is ready when InfoPanel fetches.</summary>
+    public void SetStatusImageData(byte[]? data) => _statusImageData = data;
+
     public string? CoverArtUrl => _listener?.IsListening == true
         ? $"http://localhost:{_actualPort}/cover"
+        : null;
+
+    public string? StatusImageUrl => _listener?.IsListening == true
+        ? $"http://localhost:{_actualPort}/status"
         : null;
 
     public void Start()
@@ -94,14 +110,35 @@ public sealed class CoverArtServer : IDisposable
             var request = context.Request;
             var response = context.Response;
 
-            if (request.Url?.AbsolutePath != "/cover")
+            // Try serving from in-memory buffer first (no file I/O, no lock contention)
+            var imageData = request.Url?.AbsolutePath switch
             {
-                response.StatusCode = 404;
+                "/cover" => _coverImageData,
+                "/status" => _statusImageData,
+                _ => null
+            };
+
+            if (imageData != null)
+            {
+                response.ContentType = "image/png";
+                response.ContentLength64 = imageData.Length;
+                response.Headers.Set("Cache-Control", "no-cache, no-store, must-revalidate");
+                response.Headers.Set("Pragma", "no-cache");
+                response.Headers.Set("Expires", "0");
+                await response.OutputStream.WriteAsync(imageData);
                 response.Close();
                 return;
             }
 
-            if (!File.Exists(_coverArtFilePath))
+            // Fall back to file-based serving (startup, or if buffer not yet populated)
+            var filePath = request.Url?.AbsolutePath switch
+            {
+                "/cover" => _coverArtFilePath,
+                "/status" => _statusImageFilePath,
+                _ => null
+            };
+
+            if (filePath == null || !File.Exists(filePath))
             {
                 response.StatusCode = 404;
                 response.Close();
@@ -111,7 +148,7 @@ public sealed class CoverArtServer : IDisposable
             try
             {
                 byte[] fileBytes;
-                using (var fs = new FileStream(_coverArtFilePath, FileMode.Open, FileAccess.Read,
+                using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read,
                     FileShare.ReadWrite | FileShare.Delete))
                 {
                     fileBytes = new byte[fs.Length];
