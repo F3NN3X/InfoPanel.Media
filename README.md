@@ -24,7 +24,7 @@ Any application that integrates with Windows media transport controls, including
 |--------|--------|
 | Spotify (desktop) | Fully supported |
 | Chrome / Edge / Firefox | Supported (YouTube, SoundCloud, etc.) |
-| VLC Media Player | Fully supported |
+| VLC Media Player | Requires [vlc-win10smtc](https://github.com/spmn/vlc-win10smtc) plugin (see [VLC Setup](#vlc-setup)) |
 | Windows Media Player | Fully supported |
 | Groove Music | Fully supported |
 | foobar2000 | Fully supported |
@@ -59,6 +59,18 @@ Any application that integrates with Windows media transport controls, including
 2. Extract the `InfoPanel.Media` folder to your InfoPanel plugins directory (typically `C:\ProgramData\InfoPanel\plugins\`)
 3. Restart InfoPanel
 4. The plugin will automatically detect any active media session
+
+## VLC Setup
+
+VLC media player does not natively integrate with Windows SMTC (System Media Transport Controls), so it won't be detected out of the box. To enable VLC support, install the **vlc-win10smtc** plugin:
+
+1. Download the latest release from [spmn/vlc-win10smtc](https://github.com/spmn/vlc-win10smtc/releases)
+2. Copy `libwin10smtc_plugin.dll` to your VLC plugins directory (typically `C:\Program Files\VideoLAN\VLC\plugins\control\`)
+3. Open VLC → **Tools** → **Preferences** → **All** (show settings) → **Interface** → **Control interfaces**
+4. Check **"Windows 10 SMTC integration"**
+5. Restart VLC
+
+Once enabled, VLC will appear as a GSMTC media session and the plugin will detect it like any other source.
 
 ## Configuration
 

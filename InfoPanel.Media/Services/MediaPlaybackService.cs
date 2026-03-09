@@ -43,6 +43,8 @@ public sealed class MediaPlaybackService : IDisposable
         ["firefox.exe"] = "Firefox",
         ["vlc"] = "VLC",
         ["vlc.exe"] = "VLC",
+        ["VLC"] = "VLC",
+        ["VideoLAN.VLCMediaPlayer"] = "VLC",
         ["wmplayer"] = "Windows Media Player",
         ["wmplayer.exe"] = "Windows Media Player",
         ["Music.UI"] = "Groove Music",
@@ -206,10 +208,27 @@ public sealed class MediaPlaybackService : IDisposable
     {
         if (_sessionManager == null) return null;
 
+        // Log all available sessions for diagnostics
+        var allSessions = _sessionManager.GetSessions();
+        Debug.WriteLine($"[Media] Available sessions ({allSessions.Count}):");
+        foreach (var s in allSessions)
+        {
+            try
+            {
+                var pb = s.GetPlaybackInfo();
+                Debug.WriteLine($"[Media]   - SourceAppUserModelId: '{s.SourceAppUserModelId}', " +
+                    $"Status: {pb?.PlaybackStatus}, Resolved: '{ResolveSourceApp(s.SourceAppUserModelId)}'");
+            }
+            catch
+            {
+                Debug.WriteLine($"[Media]   - SourceAppUserModelId: '{s.SourceAppUserModelId}' (failed to get playback info)");
+            }
+        }
+
         if (_prioritySources.Length == 0)
             return _sessionManager.GetCurrentSession();
 
-        var sessions = _sessionManager.GetSessions();
+        var sessions = allSessions;
         if (sessions.Count == 0) return null;
 
         GlobalSystemMediaTransportControlsSession? bestSession = null;
@@ -401,18 +420,37 @@ public sealed class MediaPlaybackService : IDisposable
         if (string.IsNullOrEmpty(sourceAppUserModelId))
             return "Unknown";
 
+        // Direct match (e.g., "vlc.exe", "Spotify.exe")
         if (FriendlyAppNames.TryGetValue(sourceAppUserModelId, out var friendly))
             return friendly;
 
-        // Try matching against the last segment (for UWP-style IDs like "Microsoft.ZuneMusic_8wekyb...")
-        var lastSegment = sourceAppUserModelId.Split('!', '_')[0];
-        var lastDotSegment = lastSegment.Contains('.') ? lastSegment[(lastSegment.LastIndexOf('.') + 1)..] : lastSegment;
+        // Extract filename from path-based IDs (e.g., "C:\...\vlc.exe" → "vlc.exe")
+        var fileName = sourceAppUserModelId.Contains('\\') || sourceAppUserModelId.Contains('/')
+            ? Path.GetFileName(sourceAppUserModelId)
+            : null;
+
+        if (fileName != null && FriendlyAppNames.TryGetValue(fileName, out var pathFriendly))
+            return pathFriendly;
+
+        // Also try without extension (e.g., "vlc")
+        var fileNameNoExt = fileName != null ? Path.GetFileNameWithoutExtension(fileName) : null;
+        if (fileNameNoExt != null && FriendlyAppNames.TryGetValue(fileNameNoExt, out var noExtFriendly))
+            return noExtFriendly;
+
+        // Try matching against the first segment (for UWP-style IDs like "Microsoft.ZuneMusic_8wekyb...!App")
+        var firstSegment = sourceAppUserModelId.Split('!', '_')[0];
+        var lastDotSegment = firstSegment.Contains('.') ? firstSegment[(firstSegment.LastIndexOf('.') + 1)..] : firstSegment;
 
         if (FriendlyAppNames.TryGetValue(lastDotSegment, out var segmentFriendly))
             return segmentFriendly;
 
-        // Strip .exe suffix and title-case
-        var cleaned = lastDotSegment.Replace(".exe", "", StringComparison.OrdinalIgnoreCase);
+        // Also try the full first segment (e.g., "VideoLAN.VLCMediaPlayer")
+        if (firstSegment != sourceAppUserModelId && FriendlyAppNames.TryGetValue(firstSegment, out var firstSegFriendly))
+            return firstSegFriendly;
+
+        // Strip .exe suffix and title-case from the best candidate
+        var candidate = fileNameNoExt ?? lastDotSegment;
+        var cleaned = candidate.Replace(".exe", "", StringComparison.OrdinalIgnoreCase);
         return string.IsNullOrEmpty(cleaned) ? "Unknown" : char.ToUpperInvariant(cleaned[0]) + cleaned[1..];
     }
 

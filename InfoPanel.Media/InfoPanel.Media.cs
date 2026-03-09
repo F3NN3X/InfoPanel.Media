@@ -50,7 +50,7 @@ public sealed class MediaPlugin : BasePlugin
     public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
     public MediaPlugin()
-        : base("media-plugin", "Media", "Displays current media playback information from any source. Version: 1.3.0")
+        : base("media-plugin", "Media", "Displays current media playback information from any source. Version: 1.3.1")
     {
     }
 
