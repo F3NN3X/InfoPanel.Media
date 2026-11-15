@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-11-15
+
+### Added
+
+- `CoverArtFit` setting to square non-square cover art (e.g. 16:9 YouTube thumbnails) so it no longer stretches in square image elements:
+  - `Original` — thumbnail served as-is (default, unchanged behavior)
+  - `Crop` — center-crop to a square that fills the frame
+  - `Fit` — pad to a square with transparent bars so the whole image stays visible
+- Squaring is applied once per new thumbnail; status image overlays are composited on top of the squared art
+
 ## [1.3.1] - 2026-03-09
 
 ### Fixed

@@ -9,6 +9,7 @@ namespace InfoPanel.Media.Services;
 public sealed class MediaPlaybackService : IDisposable
 {
     private readonly string[] _prioritySources;
+    private readonly CoverArtFit _coverArtFit;
     private GlobalSystemMediaTransportControlsSessionManager? _sessionManager;
     private GlobalSystemMediaTransportControlsSession? _currentSession;
 
@@ -59,9 +60,10 @@ public sealed class MediaPlaybackService : IDisposable
         ["mpc-hc.exe"] = "MPC-HC",
     };
 
-    public MediaPlaybackService(string[] prioritySources)
+    public MediaPlaybackService(string[] prioritySources, CoverArtFit coverArtFit)
     {
         _prioritySources = prioritySources;
+        _coverArtFit = coverArtFit;
     }
 
     public long CoverArtVersion => _coverArtVersion;
@@ -400,6 +402,8 @@ public sealed class MediaPlaybackService : IDisposable
                 return;
             }
 
+            // Hash is of the raw thumbnail so change detection doesn't pay for re-encoding
+            bytes = CoverArtProcessor.Apply(bytes, _coverArtFit);
             _lastThumbnailHash = hash;
             _lastThumbnailBytes = bytes;
             _coverArtVersion++;

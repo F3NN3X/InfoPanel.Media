@@ -12,6 +12,7 @@ Built on the Windows [Global System Media Transport Controls](https://learn.micr
 - **Zero configuration** — no API keys or authentication needed, just install and go
 - **Real-time updates** — 1Hz refresh with progress interpolation between OS events
 - **Album art over HTTP** — serves cover art via a built-in HTTP server for use with InfoPanel's HTTP image element
+- **Cover art fitting** — optionally crop or pad non-square art (e.g. YouTube thumbnails) to a square so it doesn't stretch
 - **Source detection** — identifies which app is playing (Spotify, Chrome, VLC, etc.)
 - **Customizable messages** — configure display text for idle/paused states via INI
 - **Status images** — optional play/pause/idle icons that replace, overlay on, or appear alongside cover art
@@ -84,6 +85,7 @@ PausedMessage=
 NoTrackArtistMessage=-
 PrioritySources=Spotify,Apple Music,VLC,foobar2000,AIMP,Groove Music,Windows Media Player,MPC-HC
 CoverArtPort=52312
+CoverArtFit=Original
 StatusImageMode=Overlay
 PlayImage=play.png
 PauseImage=pause.png
@@ -100,6 +102,7 @@ StatusImageStates=Play,Pause,Idle
 | `NoTrackArtistMessage` | `-` | Artist field text when no track or using custom paused message |
 | `PrioritySources` | `Spotify,Apple Music,...` | Comma-separated list of apps to prioritize (see below) |
 | `CoverArtPort` | `52312` | HTTP port for serving cover art. Set to `0` to disable (falls back to file path) |
+| `CoverArtFit` | `Original` | How non-square art (e.g. 16:9 YouTube thumbnails) is squared: `Original` (as-is, may stretch), `Crop` (center-crop to fill), `Fit` (pad with transparent bars to show the whole image) |
 | `StatusImageMode` | `Overlay` | Status image display mode (see [Status Images](#status-images) below) |
 | `PlayImage` | `play.png` | Image file for the Playing state |
 | `PauseImage` | `pause.png` | Image file for the Paused state |
@@ -138,6 +141,20 @@ For `Separate` mode, add a second Image element in your InfoPanel layout that re
 **Custom icons:** Replace the default `play.png`, `pause.png`, and `idle.png` files in the plugin directory, or point to different files using the `PlayImage`, `PauseImage`, and `IdleImage` settings (paths relative to the plugin directory, or absolute).
 
 **Fallback behavior:** If a status image file is missing for a given state, the original cover art is shown for that state. If no status image files exist at all, the mode silently reverts to `Off`.
+
+### Cover Art Fit
+
+Music apps like Spotify provide square album art, but video sources (YouTube in a browser, video players) usually provide 16:9 thumbnails, which stretch when shown in a square image element. `CoverArtFit` squares non-square art before it is served:
+
+| Mode | Behavior |
+|------|----------|
+| `Original` | Thumbnail served as-is. Non-square art may stretch. **(default)** |
+| `Crop` | Center-crops to a square that fills the frame. The left/right edges of wide thumbnails are trimmed. |
+| `Fit` | Pads to a square with transparent bars so the whole image is visible (letterboxed). |
+
+Square art is never modified. Status image overlays are drawn on top of the squared art. Restart InfoPanel after changing the setting.
+
+> Some YouTube thumbnails are delivered as 4:3 images with black bars already baked in; with `Crop`, thin bars may remain at the top and bottom.
 
 ### Session Prioritization
 
@@ -189,7 +206,8 @@ MediaPlugin (BasePlugin)
     │       ├── GSMTC SessionManager (OS-level media tracking)
     │       ├── Session events (MediaProperties, PlaybackInfo, Timeline)
     │       ├── Progress estimation (1Hz interpolation)
-    │       └── Thumbnail extraction (SHA256 change detection)
+    │       ├── Thumbnail extraction (SHA256 change detection)
+    │       └── CoverArtProcessor (optional crop/fit to square)
     ├── StatusImageService
     │       ├── Status icon resolution (play/pause/idle state mapping)
     │       └── Image compositing (replace or overlay on cover art)
@@ -199,6 +217,7 @@ MediaPlugin (BasePlugin)
 
 - **`MediaPlugin`** — main plugin class, manages lifecycle and UI elements
 - **`MediaPlaybackService`** — interfaces with the Windows GSMTC API, handles session tracking, media property changes, timeline sync, and album art extraction
+- **`CoverArtProcessor`** — squares non-square thumbnails by center-cropping or transparent padding, per `CoverArtFit`
 - **`StatusImageService`** — resolves status icons by playback state, composites overlay/replace images with change detection
 - **`CoverArtServer`** — lightweight HTTP server that serves album art (or composited status image) at `http://localhost:{port}/cover` for InfoPanel's HTTP image element
 

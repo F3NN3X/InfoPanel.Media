@@ -40,6 +40,7 @@ public sealed class MediaPlugin : BasePlugin
     private string _noTrackArtistMessage = "-";
     private string[] _prioritySources = [];
     private int _coverArtPort = 52312;
+    private CoverArtFit _coverArtFit = CoverArtFit.Original;
     private StatusImageMode _statusImageMode = StatusImageMode.Overlay;
     private string _playImage = "play.png";
     private string _pauseImage = "pause.png";
@@ -50,7 +51,7 @@ public sealed class MediaPlugin : BasePlugin
     public override TimeSpan UpdateInterval => TimeSpan.FromSeconds(1);
 
     public MediaPlugin()
-        : base("media-plugin", "Media", "Displays current media playback information from any source. Version: 1.3.1")
+        : base("media-plugin", "Media", "Displays current media playback information from any source. Version: 1.4.0")
     {
     }
 
@@ -81,7 +82,7 @@ public sealed class MediaPlugin : BasePlugin
             _playbackService.Dispose();
         }
 
-        _playbackService = new MediaPlaybackService(_prioritySources);
+        _playbackService = new MediaPlaybackService(_prioritySources, _coverArtFit);
         _playbackService.PlaybackUpdated += OnPlaybackUpdated;
         _playbackService.PlaybackError += OnPlaybackError;
         _playbackService.SessionStateChanged += OnSessionStateChanged;
@@ -127,6 +128,7 @@ public sealed class MediaPlugin : BasePlugin
             config["Media Plugin"]["NoTrackArtistMessage"] = "-";
             config["Media Plugin"]["PrioritySources"] = "Spotify,Apple Music,VLC,foobar2000,AIMP,Groove Music,Windows Media Player,MPC-HC";
             config["Media Plugin"]["CoverArtPort"] = "52312";
+            config["Media Plugin"]["CoverArtFit"] = "Original";
             config["Media Plugin"]["StatusImageMode"] = "Overlay";
             config["Media Plugin"]["PlayImage"] = "play.png";
             config["Media Plugin"]["PauseImage"] = "pause.png";
@@ -209,6 +211,19 @@ public sealed class MediaPlugin : BasePlugin
                     _coverArtPort = coverArtPort;
                 }
 
+                // CoverArtFit
+                if (config["Media Plugin"].ContainsKey("CoverArtFit") &&
+                    Enum.TryParse<CoverArtFit>(config["Media Plugin"]["CoverArtFit"], ignoreCase: true, out var parsedFit))
+                {
+                    _coverArtFit = parsedFit;
+                }
+                else
+                {
+                    config["Media Plugin"]["CoverArtFit"] = "Original";
+                    _coverArtFit = CoverArtFit.Original;
+                    configUpdated = true;
+                }
+
                 // StatusImageMode
                 if (config["Media Plugin"].ContainsKey("StatusImageMode") &&
                     Enum.TryParse<StatusImageMode>(config["Media Plugin"]["StatusImageMode"], ignoreCase: true, out var parsedMode))
@@ -282,7 +297,7 @@ public sealed class MediaPlugin : BasePlugin
                     $"NoTrackMessage: '{_noTrackMessage}', PausedMessage: '{_pausedMessage}', " +
                     $"NoTrackArtistMessage: '{_noTrackArtistMessage}', " +
                     $"PrioritySources: [{string.Join(", ", _prioritySources)}], " +
-                    $"CoverArtPort: {_coverArtPort}, " +
+                    $"CoverArtPort: {_coverArtPort}, CoverArtFit: {_coverArtFit}, " +
                     $"StatusImageMode: {_statusImageMode}, PlayImage: '{_playImage}', " +
                     $"PauseImage: '{_pauseImage}', IdleImage: '{_idleImage}', OverlayScale: {_overlayScale}, " +
                     $"StatusImageStates: [{string.Join(", ", _statusImageStates)}]");
